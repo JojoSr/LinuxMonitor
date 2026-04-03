@@ -108,3 +108,24 @@ sudo systemctl restart fortguard-linux-system-metrics
 ```
 
 After editing `/etc/default/fortguard-linux-system-metrics`, restart the service so changes apply.
+
+### Uninstall
+
+From the same directory as the install script (or copy `uninstall-linux-service.sh` to the server):
+
+```bash
+chmod +x uninstall-linux-service.sh
+sudo ./uninstall-linux-service.sh          # confirmation prompt
+sudo ./uninstall-linux-service.sh --yes    # no prompt
+```
+
+This **stops and disables** the systemd unit, removes `/etc/systemd/system/fortguard-linux-system-metrics.service`, `/etc/default/fortguard-linux-system-metrics`, `/opt/fortguard-linux-system-metrics`, and the default git clone under `/var/cache/fortguard-linux-system-metrics/LinuxMonitor`.
+
+Optional environment variables (must match a custom install if you overrode paths):
+
+| Variable | Effect |
+|----------|--------|
+| `SKIP_REMOVE_CLONE=1` | Keep the clone/build cache directory |
+| `PURGE_USER=1` | Delete the `fortguard-metrics` system user |
+
+The script does **not** remove a shared .NET SDK/runtime under `/usr/share/dotnet` or `/usr/bin/dotnet`.

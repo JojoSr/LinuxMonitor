@@ -3,8 +3,10 @@
 # Sources application code from: https://github.com/JojoSr/LinuxMonitor
 #
 # Listen port: pass as first argument, or --port N / -p N, or set LISTEN_PORT (or METRICS_PORT).
+# API key (Bearer token): --api-key TOKEN / --auth-token TOKEN / -k TOKEN, or env AUTH_TOKEN.
 # Example: sudo ./install-linux-service.sh 9100
 #          sudo ./install-linux-service.sh --port 9100
+#          sudo ./install-linux-service.sh --api-key 'YOUR_TOKEN' --port 9100
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/fortguard-linux-system-metrics}"
@@ -24,10 +26,12 @@ usage() {
   echo "Usage: $0 [OPTIONS] [PORT]" >&2
   echo "  PORT              Listen port (1-65535). Default: 8099" >&2
   echo "  -p, --port PORT   Same as positional PORT" >&2
+  echo "  -k, --api-key TOKEN" >&2
+  echo "  --auth-token TOKEN   Bearer token for /api/v1/* (written as Auth__Token; same as -k)" >&2
   echo "  -h, --help        Show this help" >&2
   echo "Environment:" >&2
   echo "  LISTEN_PORT, METRICS_PORT   Listen port (default 8099)" >&2
-  echo "  AUTH_TOKEN                  Set Bearer token (otherwise keep existing or auto-generate)" >&2
+  echo "  AUTH_TOKEN                  Set Bearer token if not passed via --api-key (else keep existing or auto-generate)" >&2
   echo "  NO_AUTH=1                   Do not require auth (leave Auth__Token empty)" >&2
   echo "  SKIP_PREREQ_INSTALL=1       Skip automatic prerequisite installs (git, curl, .NET 8 SDK)" >&2
 }
@@ -201,13 +205,20 @@ set_env_file_auth_token() {
 }
 
 # Port: env LISTEN_PORT / METRICS_PORT, then CLI.
+# API key from CLI wins over AUTH_TOKEN env (see token block below).
 LISTEN_PORT="${LISTEN_PORT:-${METRICS_PORT:-8099}}"
+INSTALL_API_KEY=""
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -p|--port)
       [[ -n "${2:-}" ]] || { echo "error: $1 requires a port number" >&2; exit 1; }
       LISTEN_PORT="$2"
+      shift 2
+      ;;
+    -k|--api-key|--auth-token)
+      [[ -n "${2:-}" ]] || { echo "error: $1 requires a token value" >&2; exit 1; }
+      INSTALL_API_KEY="$2"
       shift 2
       ;;
     -h|--help)
@@ -335,6 +346,9 @@ API_TOKEN=""
 API_TOKEN_NEW=0
 if [[ "$NO_AUTH" == "1" ]]; then
   API_TOKEN=""
+elif [[ -n "${INSTALL_API_KEY:-}" ]]; then
+  API_TOKEN="$INSTALL_API_KEY"
+  API_TOKEN_NEW=0
 elif [[ -n "${AUTH_TOKEN:-}" ]]; then
   API_TOKEN="$AUTH_TOKEN"
   API_TOKEN_NEW=0

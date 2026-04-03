@@ -6,7 +6,7 @@
 
 - **Platform:** metrics collection runs **only on Linux** (reads `/proc`, `/sys`, etc.). On other OSes, `/health` still responds; `/api/v1/*` returns HTTP 503.
 - **Deployment:** optional **systemd** install via `install-linux-service.sh`, which clones or updates from **[JojoSr/LinuxMonitor](https://github.com/JojoSr/LinuxMonitor)** and publishes the app to `/opt/fortguard-linux-system-metrics` by default.
-- **Security:** `/api/v1/*` can require a **Bearer token** when `Auth__Token` is set (e.g. in `/etc/default/fortguard-linux-system-metrics`). The install script can **generate** a token if none is configured.
+- **Security:** `/api/v1/*` can require a **Bearer token** when `Auth__Token` is set (e.g. in `/etc/default/fortguard-linux-system-metrics`). At install time you can pass **`--api-key`**, **`-k`**, or **`--auth-token`** (or set **`AUTH_TOKEN`**); otherwise the script **keeps an existing** token or **generates** one on first install.
 
 ## Usage
 
@@ -73,7 +73,13 @@ Then open `http://localhost:8099/health` (or the URL shown in the console).
 sudo ./install-linux-service.sh 9100
 # or
 sudo ./install-linux-service.sh --port 9100
+# optional: set the Bearer token at install (written as Auth__Token)
+sudo ./install-linux-service.sh --api-key 'YOUR_TOKEN' --port 9100
+sudo ./install-linux-service.sh -k 'YOUR_TOKEN' 8099
+sudo ./install-linux-service.sh --auth-token 'YOUR_TOKEN'
 ```
+
+**Token precedence** when the install script sets `Auth__Token`: command-line **`--api-key` / `-k` / `--auth-token`** overrides **`AUTH_TOKEN`**; if neither is set, an existing value in `/etc/default/...` is kept, otherwise a new token is generated (unless **`NO_AUTH=1`**).
 
 The script will:
 
@@ -81,15 +87,25 @@ The script will:
 - Publish the API to **`/opt/fortguard-linux-system-metrics`** (override with `INSTALL_DIR`).
 - Create user **`fortguard-metrics`** (override with `RUN_AS_USER`).
 - Install **`fortguard-linux-system-metrics.service`** and start it.
-- Write **`/etc/default/fortguard-linux-system-metrics`** with `ASPNETCORE_URLS` and **`Auth__Token`** (auto-generated on first install if empty).
+- Write **`/etc/default/fortguard-linux-system-metrics`** with `ASPNETCORE_URLS` and **`Auth__Token`** (from **`--api-key` / `-k` / `--auth-token`**, **`AUTH_TOKEN`**, existing file, or auto-generated).
 - Print **connection details** and example `curl` commands.
+
+### Command-line options (install script)
+
+| Option | Description |
+|--------|-------------|
+| `PORT` | Positional listen port (1–65535). |
+| `-p`, `--port PORT` | Listen port (same as positional). |
+| `-k`, `--api-key TOKEN` | Bearer token for `/api/v1/*` (stored as `Auth__Token`). |
+| `--auth-token TOKEN` | Same as `--api-key`. |
+| `-h`, `--help` | Show usage. |
 
 ### Environment variables (install script)
 
 | Variable | Description |
 |----------|-------------|
 | `LISTEN_PORT` / `METRICS_PORT` | Listen port if not passed on the command line (default `8099`). |
-| `AUTH_TOKEN` | Set the Bearer token explicitly (not printed by the script). |
+| `AUTH_TOKEN` | Bearer token if you do not pass **`--api-key` / `-k` / `--auth-token`** on the command line (install success output does not echo the token). |
 | `NO_AUTH=1` | Leave `Auth__Token` empty (no auth on `/api/v1/*`). |
 | `SELF_CONTAINED=1` | Publish **self-contained** `linux-x64` (no ASP.NET runtime on the host). |
 | `LINUX_MONITOR_REPO` | Git URL (default `https://github.com/JojoSr/LinuxMonitor.git`). |

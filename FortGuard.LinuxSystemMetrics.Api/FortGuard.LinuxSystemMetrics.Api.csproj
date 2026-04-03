@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>FortGuard.LinuxSystemMetrics.Api</RootNamespace>
+    <AssemblyName>FortGuard.LinuxSystemMetrics.Api</AssemblyName>
+    <Description>Linux host metrics HTTP API (compatible with FortGuard / HA System Metrics JSON shape).</Description>
+  </PropertyGroup>
+
+</Project>

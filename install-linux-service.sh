@@ -29,6 +29,135 @@ usage() {
   echo "  LISTEN_PORT, METRICS_PORT   Listen port (default 8099)" >&2
   echo "  AUTH_TOKEN                  Set Bearer token (otherwise keep existing or auto-generate)" >&2
   echo "  NO_AUTH=1                   Do not require auth (leave Auth__Token empty)" >&2
+  echo "  SKIP_PREREQ_INSTALL=1       Skip automatic prerequisite installs (git, curl, .NET 8 SDK)" >&2
+}
+
+# --- prerequisites (install if missing) ------------------------------------
+
+has_apt() { command -v apt-get >/dev/null 2>&1; }
+
+pkg_update_and_install() {
+  if has_apt; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq 2>/dev/null || apt-get update
+    apt-get install -y "$@"
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y "$@"
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y "$@"
+  elif command -v zypper >/dev/null 2>&1; then
+    zypper --non-interactive install -y "$@"
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache "$@"
+  elif command -v pacman >/dev/null 2>&1; then
+    pacman -Sy --noconfirm "$@"
+  else
+    echo "error: no supported package manager (apt-get, dnf, yum, zypper, apk, pacman)" >&2
+    return 1
+  fi
+}
+
+dotnet_8_sdk_present() {
+  command -v dotnet >/dev/null 2>&1 || return 1
+  dotnet --list-sdks 2>/dev/null | grep -qE '^8\.'
+}
+
+try_install_dotnet_sdk_via_distro() {
+  if has_apt; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq 2>/dev/null || apt-get update
+    apt-get install -y dotnet-sdk-8.0 || true
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y dotnet-sdk-8.0 || true
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y dotnet-sdk-8.0 || true
+  elif command -v zypper >/dev/null 2>&1; then
+    zypper --non-interactive install -y dotnet-sdk-8.0 || true
+  elif command -v pacman >/dev/null 2>&1; then
+    pacman -Sy --noconfirm dotnet-sdk || true
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache dotnet8-sdk 2>/dev/null || apk add --no-cache dotnet-sdk-8 2>/dev/null || true
+  fi
+  dotnet_8_sdk_present
+}
+
+install_dotnet_sdk_via_microsoft_script() {
+  local inst="${DOTNET_INSTALL_DIR:-/usr/share/dotnet}"
+  local dl
+  dl="$(mktemp)"
+  echo "Installing .NET 8 SDK via Microsoft dotnet-install.sh -> $inst"
+  install -d -m 0755 "$inst"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$dl"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$dl" https://dot.net/v1/dotnet-install.sh
+  else
+    echo "error: curl or wget required to download .NET SDK installer" >&2
+    rm -f "$dl"
+    return 1
+  fi
+  chmod +x "$dl"
+  if ! "$dl" --channel 8.0 --install-dir "$inst"; then
+    rm -f "$dl"
+    echo "error: dotnet-install.sh failed." >&2
+    return 1
+  fi
+  rm -f "$dl"
+  ln -sf "$inst/dotnet" /usr/bin/dotnet
+  export DOTNET_ROOT="$inst"
+  export PATH="$inst:${PATH}"
+  hash -r 2>/dev/null || true
+  if ! dotnet_8_sdk_present; then
+    echo "error: dotnet-install.sh finished but .NET 8 SDK is not on PATH." >&2
+    return 1
+  fi
+  return 0
+}
+
+ensure_prerequisites() {
+  echo "==> Checking prerequisites..."
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "==> Installing git..."
+    pkg_update_and_install git || exit 1
+  fi
+
+  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    echo "==> Installing curl (or wget) and CA certificates..."
+    pkg_update_and_install curl ca-certificates || pkg_update_and_install wget ca-certificates || exit 1
+  fi
+
+  if has_apt && command -v dpkg >/dev/null 2>&1 && ! dpkg -s ca-certificates >/dev/null 2>&1; then
+    echo "==> Installing CA certificate bundle..."
+    pkg_update_and_install ca-certificates || true
+  elif command -v dnf >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1 && ! rpm -q ca-certificates >/dev/null 2>&1; then
+    dnf install -y ca-certificates || true
+  fi
+
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "==> Installing openssl..."
+    pkg_update_and_install openssl || true
+  fi
+
+  if dotnet_8_sdk_present; then
+    echo "==> .NET 8 SDK already installed: $(command -v dotnet)"
+    return 0
+  fi
+
+  echo "==> Installing .NET 8 SDK (trying distribution packages first)..."
+  if try_install_dotnet_sdk_via_distro; then
+    echo "==> .NET 8 SDK installed from distribution packages."
+    return 0
+  fi
+
+  echo "==> Distribution packages unavailable or incomplete; using Microsoft install script..."
+  if ! install_dotnet_sdk_via_microsoft_script; then
+    echo "error: could not install .NET 8 SDK. Install manually:" >&2
+    echo "  https://learn.microsoft.com/en-us/dotnet/core/install/linux" >&2
+    echo "Or set SKIP_PREREQ_INSTALL=1 after installing the SDK yourself." >&2
+    exit 1
+  fi
+  echo "==> .NET 8 SDK installed via dotnet-install.sh."
 }
 
 generate_api_token_hex() {
@@ -115,13 +244,20 @@ if [[ "${EUID:-0}" -ne 0 ]]; then
   exit 1
 fi
 
+SKIP_PREREQ_INSTALL="${SKIP_PREREQ_INSTALL:-0}"
+if [[ "$SKIP_PREREQ_INSTALL" != "1" ]]; then
+  ensure_prerequisites
+else
+  echo "==> SKIP_PREREQ_INSTALL=1 — skipping automatic prerequisite installation."
+fi
+
 if ! command -v git >/dev/null 2>&1; then
-  echo "git is required. Install with: apt install git  or  dnf install git" >&2
+  echo "error: git is required. Install git or re-run without SKIP_PREREQ_INSTALL=1." >&2
   exit 1
 fi
 
-if ! command -v dotnet >/dev/null 2>&1; then
-  echo "dotnet SDK not found. Install .NET 8 SDK, or set SELF_CONTAINED=1 on a machine with the SDK and copy the publish folder." >&2
+if ! dotnet_8_sdk_present; then
+  echo "error: .NET 8 SDK not found. Install dotnet-sdk-8.0 or re-run without SKIP_PREREQ_INSTALL=1." >&2
   exit 1
 fi
 

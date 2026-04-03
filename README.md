@@ -56,9 +56,11 @@ Then open `http://localhost:8099/health` (or the URL shown in the console).
 
 ### Prerequisites
 
-- **Linux** host with **root** (for systemd and `/etc/default`).
-- **Git** and **.NET 8 SDK** on the machine where you run the installer (to clone and publish).
-- For a **framework-dependent** publish (default): **ASP.NET Core Runtime 8.x** on the target host.
+- **Linux** host with **root** (for systemd, `/etc/default`, and package installation).
+- A supported **package manager**: `apt-get`, `dnf`/`yum`, `zypper`, `apk`, or `pacman`.
+- The install script **installs missing prerequisites** when possible: **git**, **curl** (or **wget**), **CA certificates**, **openssl**, and **.NET 8 SDK** (tries distro `dotnet-sdk-8.0` first, then [Microsoft’s `dotnet-install.sh`](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-install-script)).
+- Set **`SKIP_PREREQ_INSTALL=1`** if you manage dependencies yourself (corporate mirror, air-gapped host, etc.).
+- For a **framework-dependent** publish (default), the **ASP.NET Core 8** shared runtime is satisfied when the SDK is installed on the same machine.
 - Optional: **OpenSSL** (preferred for token generation); otherwise the script falls back to `/dev/urandom` + `base64`.
 
 ### Install with systemd
@@ -95,6 +97,8 @@ The script will:
 | `LINUX_MONITOR_CLONE_DIR` | Clone/cache directory (default under `/var/cache/fortguard-linux-system-metrics`). |
 | `INSTALL_DIR` | Install root (default `/opt/fortguard-linux-system-metrics`). |
 | `SERVICE_NAME` | systemd unit base name (default `fortguard-linux-system-metrics`). |
+| `SKIP_PREREQ_INSTALL` | Set to `1` to skip automatic installs of git, curl, .NET 8 SDK, etc. |
+| `DOTNET_INSTALL_DIR` | Directory for Microsoft `dotnet-install.sh` (default `/usr/share/dotnet`). |
 
 ### Service management
 
